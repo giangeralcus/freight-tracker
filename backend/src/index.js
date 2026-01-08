@@ -91,6 +91,322 @@ app.put('/api/settings/:key', async (req, res) => {
 });
 
 // =============================================
+// CURRENCIES ENDPOINTS
+// =============================================
+
+// Get all currencies
+app.get('/api/currencies', async (req, res) => {
+  try {
+    const { active } = req.query;
+    let query = 'SELECT * FROM currencies';
+    const params = [];
+
+    if (active !== undefined) {
+      query += ' WHERE is_active = $1';
+      params.push(active === 'true');
+    }
+    query += ' ORDER BY sort_order';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching currencies:', error);
+    res.status(500).json({ error: 'Failed to fetch currencies' });
+  }
+});
+
+// Get base currency
+app.get('/api/currencies/base', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM currencies WHERE is_base = true LIMIT 1');
+    res.json(result.rows[0] || null);
+  } catch (error) {
+    console.error('Error fetching base currency:', error);
+    res.status(500).json({ error: 'Failed to fetch base currency' });
+  }
+});
+
+// =============================================
+// EXCHANGE RATES ENDPOINTS
+// =============================================
+
+// Get current week rates
+app.get('/api/exchange-rates/current', async (req, res) => {
+  try {
+    const { source } = req.query;
+    let query = 'SELECT * FROM v_current_exchange_rates';
+    const params = [];
+
+    if (source) {
+      query = `SELECT * FROM v_current_exchange_rates WHERE source = $1`;
+      params.push(source);
+    }
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching current rates:', error);
+    res.status(500).json({ error: 'Failed to fetch current rates' });
+  }
+});
+
+// Get rate history
+app.get('/api/exchange-rates/history', async (req, res) => {
+  try {
+    const { from_currency, to_currency, source, limit } = req.query;
+    let query = 'SELECT * FROM v_exchange_rate_history WHERE 1=1';
+    const params = [];
+
+    if (from_currency) {
+      params.push(from_currency);
+      query += ` AND from_currency = $${params.length}`;
+    }
+    if (to_currency) {
+      params.push(to_currency);
+      query += ` AND to_currency = $${params.length}`;
+    }
+    if (source) {
+      params.push(source);
+      query += ` AND source = $${params.length}`;
+    }
+
+    query += ' ORDER BY year DESC, week_number DESC';
+
+    if (limit) {
+      params.push(parseInt(limit));
+      query += ` LIMIT $${params.length}`;
+    }
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching rate history:', error);
+    res.status(500).json({ error: 'Failed to fetch rate history' });
+  }
+});
+
+// Get specific rate for conversion
+app.get('/api/exchange-rates/rate', async (req, res) => {
+  try {
+    const { from, to, source, date } = req.query;
+
+    if (!from || !to) {
+      return res.status(400).json({ error: 'from and to currency codes are required' });
+    }
+
+    const result = await pool.query(
+      'SELECT get_exchange_rate($1, $2, $3, $4) as rate',
+      [from, to, source || null, date || new Date().toISOString().split('T')[0]]
+    );
+
+    const rate = result.rows[0]?.rate;
+    if (!rate) {
+      return res.status(404).json({ error: `Exchange rate not found for ${from} to ${to}` });
+    }
+
+    res.json({
+      from_currency: from,
+      to_currency: to,
+      rate: parseFloat(rate),
+      source: source || 'BI',
+      date: date || new Date().toISOString().split('T')[0]
+    });
+  } catch (error) {
+    console.error('Error fetching exchange rate:', error);
+    res.status(500).json({ error: 'Failed to fetch exchange rate' });
+  }
+});
+
+// Convert currency amount
+app.post('/api/exchange-rates/convert', async (req, res) => {
+  try {
+    const { amount, from, to, source, date } = req.body;
+
+    if (!amount || !from || !to) {
+      return res.status(400).json({ error: 'amount, from, and to are required' });
+    }
+
+    const result = await pool.query(
+      'SELECT convert_currency($1, $2, $3, $4, $5) as converted_amount',
+      [amount, from, to, source || null, date || new Date().toISOString().split('T')[0]]
+    );
+
+    const converted = result.rows[0]?.converted_amount;
+    if (converted === null) {
+      return res.status(404).json({ error: `Cannot convert ${from} to ${to}` });
+    }
+
+    // Get the rate used
+    const rateResult = await pool.query(
+      'SELECT get_exchange_rate($1, $2, $3, $4) as rate',
+      [from, to, source || null, date || new Date().toISOString().split('T')[0]]
+    );
+
+    res.json({
+      original_amount: parseFloat(amount),
+      from_currency: from,
+      converted_amount: parseFloat(converted),
+      to_currency: to,
+      rate_used: parseFloat(rateResult.rows[0]?.rate || 0),
+      source: source || 'BI',
+      date: date || new Date().toISOString().split('T')[0]
+    });
+  } catch (error) {
+    console.error('Error converting currency:', error);
+    res.status(500).json({ error: 'Failed to convert currency' });
+  }
+});
+
+// Create new weekly rate
+app.post('/api/exchange-rates', async (req, res) => {
+  try {
+    const {
+      from_currency,
+      to_currency,
+      rate,
+      rate_buy,
+      rate_sell,
+      source,
+      source_reference,
+      week_start, // Optional: defaults to current week
+      notes,
+      created_by
+    } = req.body;
+
+    if (!from_currency || !to_currency || !rate) {
+      return res.status(400).json({ error: 'from_currency, to_currency, and rate are required' });
+    }
+
+    // Get currency IDs
+    const fromCurrency = await pool.query('SELECT id FROM currencies WHERE code = $1', [from_currency]);
+    const toCurrency = await pool.query('SELECT id FROM currencies WHERE code = $1', [to_currency]);
+
+    if (fromCurrency.rows.length === 0 || toCurrency.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid currency code' });
+    }
+
+    // Get week boundaries
+    const weekDate = week_start || new Date().toISOString().split('T')[0];
+    const weekBoundaries = await pool.query('SELECT * FROM get_week_boundaries($1)', [weekDate]);
+    const { week_start: validFrom, week_end: validTo, week_num, year_num } = weekBoundaries.rows[0];
+
+    // Insert rate
+    const result = await pool.query(`
+      INSERT INTO exchange_rates (
+        from_currency_id, to_currency_id, rate, rate_buy, rate_sell,
+        source, source_reference, week_number, year, valid_from, valid_to,
+        is_current, notes, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT (from_currency_id, to_currency_id, week_number, year, source)
+      DO UPDATE SET
+        rate = EXCLUDED.rate,
+        rate_buy = EXCLUDED.rate_buy,
+        rate_sell = EXCLUDED.rate_sell,
+        source_reference = EXCLUDED.source_reference,
+        notes = EXCLUDED.notes,
+        updated_at = NOW()
+      RETURNING *
+    `, [
+      fromCurrency.rows[0].id,
+      toCurrency.rows[0].id,
+      rate,
+      rate_buy || null,
+      rate_sell || null,
+      source || 'MANUAL',
+      source_reference || null,
+      week_num,
+      year_num,
+      validFrom,
+      validTo,
+      validFrom <= new Date() && new Date() <= validTo,
+      notes || null,
+      created_by || null
+    ]);
+
+    // Update is_current flags
+    await pool.query('SELECT set_current_week_rates()');
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating exchange rate:', error);
+    res.status(500).json({ error: 'Failed to create exchange rate' });
+  }
+});
+
+// Bulk update weekly rates
+app.post('/api/exchange-rates/bulk', async (req, res) => {
+  try {
+    const { rates, week_start, source, created_by } = req.body;
+
+    if (!rates || !Array.isArray(rates) || rates.length === 0) {
+      return res.status(400).json({ error: 'rates array is required' });
+    }
+
+    const weekDate = week_start || new Date().toISOString().split('T')[0];
+    const weekBoundaries = await pool.query('SELECT * FROM get_week_boundaries($1)', [weekDate]);
+    const { week_start: validFrom, week_end: validTo, week_num, year_num } = weekBoundaries.rows[0];
+
+    const results = [];
+    for (const rateData of rates) {
+      const { from_currency, to_currency, rate, rate_buy, rate_sell, source_reference, notes } = rateData;
+
+      const fromCurrency = await pool.query('SELECT id FROM currencies WHERE code = $1', [from_currency]);
+      const toCurrency = await pool.query('SELECT id FROM currencies WHERE code = $1', [to_currency]);
+
+      if (fromCurrency.rows.length === 0 || toCurrency.rows.length === 0) {
+        continue;
+      }
+
+      const result = await pool.query(`
+        INSERT INTO exchange_rates (
+          from_currency_id, to_currency_id, rate, rate_buy, rate_sell,
+          source, source_reference, week_number, year, valid_from, valid_to,
+          is_current, notes, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        ON CONFLICT (from_currency_id, to_currency_id, week_number, year, source)
+        DO UPDATE SET
+          rate = EXCLUDED.rate,
+          rate_buy = EXCLUDED.rate_buy,
+          rate_sell = EXCLUDED.rate_sell,
+          updated_at = NOW()
+        RETURNING *
+      `, [
+        fromCurrency.rows[0].id,
+        toCurrency.rows[0].id,
+        rate,
+        rate_buy || null,
+        rate_sell || null,
+        source || 'MANUAL',
+        source_reference || null,
+        week_num,
+        year_num,
+        validFrom,
+        validTo,
+        true,
+        notes || null,
+        created_by || null
+      ]);
+
+      results.push(result.rows[0]);
+    }
+
+    await pool.query('SELECT set_current_week_rates()');
+
+    res.status(201).json({
+      message: `${results.length} rates updated`,
+      week_number: week_num,
+      year: year_num,
+      valid_from: validFrom,
+      valid_to: validTo,
+      rates: results
+    });
+  } catch (error) {
+    console.error('Error bulk updating rates:', error);
+    res.status(500).json({ error: 'Failed to bulk update rates' });
+  }
+});
+
+// =============================================
 // CUSTOMERS ENDPOINTS
 // =============================================
 

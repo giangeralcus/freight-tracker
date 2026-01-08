@@ -9,6 +9,7 @@ import {
   Settings,
   TrendingUp,
   Package,
+  DollarSign,
 } from 'lucide-react';
 
 const navigation = [
@@ -19,6 +20,7 @@ const navigation = [
   { name: 'Customers', href: '/customers', icon: Users },
   { name: 'Vendors', href: '/vendors', icon: Building2 },
   { name: 'Rates', href: '/rates', icon: Package },
+  { name: 'Currency', href: '/currency', icon: DollarSign },
   { name: 'Reports', href: '/reports', icon: TrendingUp },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];

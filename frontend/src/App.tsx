@@ -8,6 +8,7 @@ import { Shipments } from './pages/Shipments';
 import { Customers } from './pages/Customers';
 import { Vendors } from './pages/Vendors';
 import { Rates } from './pages/Rates';
+import { CurrencyPage } from './pages/Currency';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 
@@ -34,6 +35,7 @@ function App() {
             <Route path="customers" element={<Customers />} />
             <Route path="vendors" element={<Vendors />} />
             <Route path="rates" element={<Rates />} />
+            <Route path="currency" element={<CurrencyPage />} />
             <Route path="reports" element={<Reports />} />
             <Route path="settings" element={<Settings />} />
           </Route>

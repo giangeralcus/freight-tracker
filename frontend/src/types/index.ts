@@ -336,3 +336,67 @@ export interface RouteProfit {
   total_profit_usd: number;
   margin_percentage: number;
 }
+
+// =============================================
+// MULTI-CURRENCY TYPES
+// =============================================
+
+export interface Currency {
+  id: number;
+  code: string;
+  name: string;
+  symbol: string | null;
+  decimal_places: number;
+  country: string | null;
+  is_base: boolean;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+export type RateSource = 'BI' | 'BCA' | 'MANDIRI' | 'MANUAL' | 'API';
+
+export interface ExchangeRate {
+  id: number;
+  from_currency: string;
+  from_currency_name: string;
+  to_currency: string;
+  to_currency_name: string;
+  rate: number;
+  rate_buy: number | null;
+  rate_sell: number | null;
+  source: RateSource;
+  source_reference: string | null;
+  week_number: number;
+  year: number;
+  valid_from: string;
+  valid_to: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExchangeRateHistory extends ExchangeRate {
+  prev_rate: number | null;
+  change_percent: number | null;
+}
+
+export interface ConversionResult {
+  original_amount: number;
+  from_currency: string;
+  converted_amount: number;
+  to_currency: string;
+  rate_used: number;
+  source: RateSource;
+  date: string;
+}
+
+export interface RateInput {
+  from_currency: string;
+  to_currency: string;
+  rate: number;
+  rate_buy?: number;
+  rate_sell?: number;
+  source_reference?: string;
+  notes?: string;
+}
