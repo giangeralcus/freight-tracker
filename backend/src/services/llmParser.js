@@ -41,7 +41,7 @@ JSON:`;
 /**
  * Check if Ollama is available
  */
-async function isOllamaAvailable() {
+export async function isOllamaAvailable() {
   try {
     const models = await ollama.list();
     const modelNames = models.models.map(m => m.name);
