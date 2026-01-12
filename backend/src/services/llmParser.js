@@ -21,6 +21,7 @@ EXTRACT THESE FIELDS (use null if not found):
 - pol: Port of Loading (city or port name)
 - pod: Port of Discharge / Destination (city or port name)
 - commodity: Cargo description
+- hs_code: HS/Tariff code (6-10 digits, e.g., 8471.30, 9403.20.00)
 - is_dg: Is dangerous goods? (true/false)
 - dg_class: DG class if applicable
 - weight_kg: Weight in KG (number only)
@@ -131,6 +132,7 @@ function cleanParsedData(data) {
     pol: cleanString(data.pol)?.toUpperCase(),
     pod: cleanString(data.pod)?.toUpperCase(),
     commodity: cleanString(data.commodity),
+    hs_code: normalizeHsCode(data.hs_code),
     is_dg: Boolean(data.is_dg),
     dg_class: cleanString(data.dg_class),
     weight_kg: parseNumber(data.weight_kg),
@@ -161,6 +163,18 @@ function normalizeServiceType(value) {
   if (upper.includes('LCL') || upper.includes('CONSOL')) return 'LCL';
   if (upper.includes('AIR')) return 'AIR';
   return upper;
+}
+
+function normalizeHsCode(value) {
+  if (!value) return null;
+  // Remove spaces and normalize format
+  let hsCode = String(value).replace(/\s+/g, '').trim();
+  // Keep only digits and dots
+  hsCode = hsCode.replace(/[^\d.]/g, '');
+  // Validate: HS codes are typically 6-10 digits (with optional dots)
+  const digits = hsCode.replace(/\./g, '');
+  if (digits.length < 4 || digits.length > 12) return null;
+  return hsCode || null;
 }
 
 function normalizeContainerType(value) {
