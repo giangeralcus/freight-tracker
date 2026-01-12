@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
 import dotenv from 'dotenv';
+import { parseInquiryEmail, matchPort, matchCustomer, isOllamaAvailable } from './services/llmParser.js';
 
 dotenv.config();
 
@@ -618,6 +619,118 @@ app.get('/api/inquiries', async (req, res) => {
   } catch (error) {
     console.error('Error fetching inquiries:', error);
     res.status(500).json({ error: 'Failed to fetch inquiries' });
+  }
+});
+
+// Check LLM availability
+app.get('/api/inquiries/llm-status', async (req, res) => {
+  try {
+    const available = await isOllamaAvailable();
+    res.json({
+      available,
+      model: 'qwen2.5:7b',
+      message: available ? 'LLM ready for email parsing' : 'Ollama not available. Run: ollama serve'
+    });
+  } catch (error) {
+    res.json({ available: false, error: error.message });
+  }
+});
+
+// Parse email using LLM
+app.post('/api/inquiries/parse', async (req, res) => {
+  try {
+    const { email_subject, email_body } = req.body;
+
+    if (!email_body) {
+      return res.status(400).json({ error: 'email_body is required' });
+    }
+
+    // Combine subject and body for parsing
+    const emailContent = email_subject
+      ? `Subject: ${email_subject}\n\n${email_body}`
+      : email_body;
+
+    console.log('Parsing inquiry email...');
+
+    // Parse with LLM
+    const parsed = await parseInquiryEmail(emailContent);
+
+    // Match POL/POD to database
+    const polMatch = await matchPort(pool, parsed.pol);
+    const podMatch = await matchPort(pool, parsed.pod);
+
+    // Match customer
+    const customerMatch = await matchCustomer(pool, parsed.customer_email, parsed.customer_name);
+
+    res.json({
+      success: true,
+      parsed: {
+        ...parsed,
+        pol_id: polMatch?.id || null,
+        pol_code: polMatch?.code || null,
+        pol_matched: polMatch?.name || parsed.pol,
+        pod_id: podMatch?.id || null,
+        pod_code: podMatch?.code || null,
+        pod_matched: podMatch?.name || parsed.pod,
+        customer_id: customerMatch?.id || null,
+        customer_code: customerMatch?.code || null,
+        customer_matched: customerMatch?.name || parsed.customer_name,
+      },
+      matches: {
+        pol: polMatch,
+        pod: podMatch,
+        customer: customerMatch,
+      }
+    });
+
+  } catch (error) {
+    console.error('Error parsing inquiry:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      hint: 'Make sure Ollama is running: ollama serve'
+    });
+  }
+});
+
+// Create inquiry from parsed data
+app.post('/api/inquiries', async (req, res) => {
+  try {
+    const {
+      customer_id, customer_name, customer_email,
+      incoterm, service_type, pol, pol_id, pod, pod_id,
+      commodity, is_dg, dg_class, un_number,
+      weight_kg, volume_cbm, container_type, container_qty,
+      freetime_days, email_subject, email_body, notes
+    } = req.body;
+
+    // Generate inquiry number
+    const numberResult = await pool.query('SELECT generate_inquiry_number() as inquiry_number');
+    const inquiry_number = numberResult.rows[0].inquiry_number;
+
+    const result = await pool.query(`
+      INSERT INTO inquiries (
+        inquiry_number, customer_id, customer_name, customer_email,
+        incoterm, service_type, pol, pol_id, pod, pod_id,
+        commodity, is_dg, dg_class, un_number,
+        weight_kg, volume_cbm, container_type, container_qty,
+        freetime_days, email_subject, email_body, notes, status
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, 'NEW'
+      ) RETURNING *
+    `, [
+      inquiry_number, customer_id, customer_name, customer_email,
+      incoterm, service_type, pol, pol_id, pod, pod_id,
+      commodity, is_dg || false, dg_class, un_number,
+      weight_kg, volume_cbm, container_type, container_qty,
+      freetime_days, email_subject, email_body, notes
+    ]);
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating inquiry:', error);
+    res.status(500).json({ error: 'Failed to create inquiry' });
   }
 });
 
