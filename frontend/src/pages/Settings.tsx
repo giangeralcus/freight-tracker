@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Settings as SettingsIcon, Save } from 'lucide-react';
+import { Save } from 'lucide-react';
 import { api } from '../api/client';
 import { Card, CardHeader } from '../components/ui/Card';
 import type { Setting } from '../types';

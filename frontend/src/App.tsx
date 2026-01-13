@@ -11,6 +11,7 @@ import { Rates } from './pages/Rates';
 import { CurrencyPage } from './pages/Currency';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
+import { Schedules } from './pages/Schedules';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -32,6 +33,7 @@ function App() {
             <Route path="inquiries" element={<Inquiries />} />
             <Route path="quotations" element={<Quotations />} />
             <Route path="shipments" element={<Shipments />} />
+            <Route path="schedules" element={<Schedules />} />
             <Route path="customers" element={<Customers />} />
             <Route path="vendors" element={<Vendors />} />
             <Route path="rates" element={<Rates />} />

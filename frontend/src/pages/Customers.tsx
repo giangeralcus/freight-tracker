@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Users, Plus, Search } from 'lucide-react';
 import { api } from '../api/client';
-import { Card, CardHeader } from '../components/ui/Card';
+import { Card } from '../components/ui/Card';
 import type { Customer } from '../types';
 
 export function Customers() {

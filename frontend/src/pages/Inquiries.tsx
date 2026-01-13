@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import {
   MessageSquare,
   Sparkles,
-  Send,
   Check,
   AlertCircle,
   Loader2,
@@ -12,10 +11,6 @@ import {
   Package,
   MapPin,
   User,
-  Mail,
-  Weight,
-  Box,
-  Calendar,
   FileText,
   ChevronRight,
   X,
