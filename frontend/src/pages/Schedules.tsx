@@ -3,13 +3,13 @@ import { Calendar, Ship, MapPin, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export function Schedules() {
-  const { data: schedules, isLoading } = useQuery({
+  const { data: schedules, isLoading, error } = useQuery({
     queryKey: ['shipping-schedules'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('shipping_schedules')
         .select('*')
-        .order('etd', { ascending: true });
+        .order('etd_jakarta', { ascending: true });
       if (error) throw error;
       return data || [];
     },
@@ -25,6 +25,16 @@ export function Schedules() {
               <div key={i} className="h-20 bg-gray-100 rounded-lg"></div>
             ))}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 text-red-700 p-4 rounded-lg">
+          Error loading schedules: {(error as Error).message}
         </div>
       </div>
     );
@@ -47,21 +57,21 @@ export function Schedules() {
                     <div className="flex items-center gap-2 mb-2">
                       <Ship className="w-4 h-4 text-blue-600" />
                       <span className="font-medium text-gray-900">
-                        {schedule.vessel_name || schedule.carrier || 'TBA'}
+                        {schedule.vessel_name || schedule.vessel || schedule.carrier || 'TBA'}
                       </span>
-                      {schedule.voyage && (
-                        <span className="text-xs text-gray-400">V.{schedule.voyage}</span>
+                      {(schedule.voyage_number || schedule.voy) && (
+                        <span className="text-xs text-gray-400">V.{schedule.voyage_number || schedule.voy}</span>
                       )}
                     </div>
-                    
+
                     <div className="flex items-center gap-4 text-sm">
                       <div className="flex items-center gap-1">
                         <MapPin className="w-3 h-3 text-gray-400" />
-                        <span className="text-gray-600">{schedule.pol}</span>
+                        <span className="text-gray-600">{schedule.origin || 'Jakarta'}</span>
                         <span className="text-gray-300 mx-1">→</span>
-                        <span className="text-gray-600">{schedule.pod}</span>
+                        <span className="text-gray-600">{schedule.destination || '-'}</span>
                       </div>
-                      
+
                       {schedule.transit_time && (
                         <div className="flex items-center gap-1 text-gray-400">
                           <Clock className="w-3 h-3" />
@@ -70,30 +80,34 @@ export function Schedules() {
                       )}
                     </div>
                   </div>
-                  
+
                   <div className="text-right">
                     <div className="flex items-center gap-1 text-sm">
                       <Calendar className="w-3 h-3 text-gray-400" />
                       <span className="text-gray-600">ETD:</span>
                       <span className="font-medium text-gray-900">
-                        {schedule.etd ? new Date(schedule.etd).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '-'}
+                        {schedule.etd_jakarta
+                          ? new Date(schedule.etd_jakarta).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+                          : schedule.etd
+                            ? new Date(schedule.etd).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+                            : '-'}
                       </span>
                     </div>
-                    {schedule.eta && (
+                    {(schedule.eta_destination || schedule.eta) && (
                       <div className="text-xs text-gray-400 mt-1">
-                        ETA: {new Date(schedule.eta).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                        ETA: {new Date(schedule.eta_destination || schedule.eta).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </div>
                     )}
                   </div>
                 </div>
-                
-                {(schedule.closing_time || schedule.remarks) && (
+
+                {(schedule.closing_time || schedule.notes || schedule.remarks) && (
                   <div className="mt-2 pt-2 border-t border-gray-50 text-xs text-gray-400">
                     {schedule.closing_time && (
                       <span>Closing: {schedule.closing_time}</span>
                     )}
-                    {schedule.remarks && (
-                      <span className="ml-3">{schedule.remarks}</span>
+                    {(schedule.notes || schedule.remarks) && (
+                      <span className="ml-3">{schedule.notes || schedule.remarks}</span>
                     )}
                   </div>
                 )}
@@ -107,7 +121,7 @@ export function Schedules() {
           </div>
         )}
       </div>
-      
+
       <div className="mt-4 text-xs text-gray-400 text-right">
         {schedules?.length || 0} schedules
       </div>
